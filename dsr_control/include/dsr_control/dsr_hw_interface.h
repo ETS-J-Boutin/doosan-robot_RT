@@ -237,7 +237,7 @@
 #include "../../../common/include/dsr_serial.h"
 
 #ifndef PI
-#define PI 3.14159265359
+#define PI 3.141592653589
 #endif
 #define deg2rad(deg)  ((deg) * PI / 180.0)
 #define rad2deg(rad)  ((rad) * 180.0 / PI)
@@ -507,6 +507,8 @@ using namespace DRAFramework;
 
 namespace dsr_control{
 
+    enum JointCmdMode {MD_NONE, MD_POSITION, MD_VELOCITY, MD_EFFORT};
+
     class DRHWInterface : public hardware_interface::RobotHW
     {
     public:
@@ -514,6 +516,11 @@ namespace dsr_control{
         virtual ~DRHWInterface();
 
         bool init();
+        virtual bool prepareSwitch(const std::list<hardware_interface::ControllerInfo> &start_list,
+                        const std::list<hardware_interface::ControllerInfo> &stop_list);
+        virtual void doSwitch(const std::list<hardware_interface::ControllerInfo> &start_list,
+                        const std::list<hardware_interface::ControllerInfo> &stop_list);
+
         virtual void read(ros::Duration& elapsed_time);
         virtual void write(ros::Duration& elapsed_time);
         int MsgPublisher_RobotState();
@@ -542,6 +549,7 @@ namespace dsr_control{
         std::string GetRobotModel();
 
     private:
+        bool DHI_ok_;               //used to signal spinners that it's time to die.
         int  m_nVersionDRCF;
         bool m_bIsEmulatorMode; 
 
@@ -605,9 +613,17 @@ namespace dsr_control{
         // ROS Interface
         hardware_interface::JointStateInterface jnt_state_interface;
         hardware_interface::PositionJointInterface jnt_pos_interface;
-        hardware_interface::VelocityJointInterface velocity_joint_interface_;
+        hardware_interface::VelocityJointInterface jnt_vel_interface;
+        hardware_interface::VelocityJointInterface velocity_joint_interface_;   //this one was used for the mobile base, not the robot joints.
+        JointCmdMode cmd_mode_=MD_NONE;
+        float sixzeros_[6]={0.0,0.0,0.0,0.0,0.0,0.0};
+        float six_magic_cookies_[6]={-10000.0,-10000.0,-10000.0,-10000.0,-10000.0,-10000.0};
+        float cmdbuf_[6];   //should this be an a std::array<float, NUM_JOINT>, then use .data method?
+        double rate_=1.23;     //controller/statuser update rate
+        int drops_=1;       //permitted drops, probably.
+        LPRT_OUTPUT_DATA_LIST recv_data_;
 
-        std::array<float, NUM_JOINT> cmd_;
+        //std::array<float, NUM_JOINT> cmd_;
         bool bCommand_;
         struct Joint{
             double cmd;

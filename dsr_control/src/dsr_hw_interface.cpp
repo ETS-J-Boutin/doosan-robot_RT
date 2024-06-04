@@ -645,20 +645,20 @@ namespace dsr_control{
     void DRHWInterface::thread_subscribe(ros::NodeHandle nh)
     {
         //ros::NodeHandlePtr node = boost::make_shared<ros::NodeHandle>();
-        ros::Subscriber sub_robot_stop = nh.subscribe("stop", 100, MsgScriber);
+        ros::Subscriber sub_robot_stop = nh.subscribe("stop", 1, MsgScriber);
         //ros::spin();
         ros::MultiThreadedSpinner spinner(2);
-        spinner.spin();
+        spinner.spin(); //TODO: spinonce in a loop on DHI_ok_
     }
 
     void DRHWInterface::thread_publisher(DRHWInterface* pDRHWInterface, ros::NodeHandle nh, int nPubRate)
     {  
         //ros::NodeHandlePtr node = boost::make_shared<ros::NodeHandle>();
-        ros::Publisher PubRobotState = nh.advertise<dsr_msgs::RobotState>("state",100);
+        ros::Publisher PubRobotState = nh.advertise<dsr_msgs::RobotState>("state",1);
         dsr_msgs::RobotState msg;
 
         ros::Rate r(nPubRate);
-        while (ros::ok())
+        while (ros::ok()&&pDRHWInterface->DHI_ok_)
         {
             //ROS_INFO("thread_publisher running!");      
             if(pDRHWInterface) pDRHWInterface->MsgPublisher_RobotState();
@@ -687,7 +687,7 @@ namespace dsr_control{
             arm_joint_names =
             boost::assign::list_of("joint1")("joint2")("joint3")("joint4")("joint5")("joint6")("robotiq_85_left_knuckle_joint").convert_to_container<ros::V_string>();
         }
-        else if(m_strRobotGripper == "none")
+        else
         {
             arm_joint_names =
             boost::assign::list_of("joint1")("joint2")("joint3")("joint4")("joint5")("joint6").convert_to_container<ros::V_string>();
@@ -699,14 +699,21 @@ namespace dsr_control{
                 &joints[i].vel,
                 &joints[i].eff);
             jnt_state_interface.registerHandle(jnt_state_handle);
-
+    
             hardware_interface::JointHandle jnt_pos_handle(
                 jnt_state_handle,
                 &joints[i].cmd);
             jnt_pos_interface.registerHandle(jnt_pos_handle);
+
+            //velocity robot joint interface
+            hardware_interface::JointHandle jnt_vel_handle(
+                jnt_state_handle,
+                &joints[i].cmd);
+            jnt_vel_interface.registerHandle(jnt_vel_handle);
         }
         registerInterface(&jnt_state_interface);
         registerInterface(&jnt_pos_interface);
+        registerInterface(&jnt_vel_interface);      //register the joint velocity interface
 
         /*ros::V_string joint_names = boost::assign::list_of("front_left_wheel")("front_right_wheel")("rear_left_wheel")("rear_right_wheel");
         for (unsigned int i = 0; i < joint_names.size(); i++){
@@ -725,29 +732,29 @@ namespace dsr_control{
         ///m_PubJogMultiAxis = private_nh_.advertise<dsr_msgs::JogMultiAxis>("jog_multi",100);
 
         // gazebo에 joint position 전달
-        m_PubtoGazebo = private_nh_.advertise<std_msgs::Float64MultiArray>("/dsr_joint_position_controller/command",1);
+        //m_PubtoGazebo = private_nh_.advertise<std_msgs::Float64MultiArray>("/dsr_joint_position_controller/command",1);
         // moveit의 trajectory/goal를 받아 제어기로 전달
         m_sub_joint_trajectory = private_nh_.subscribe("dsr_joint_trajectory_controller/follow_joint_trajectory/goal", 10, &DRHWInterface::trajectoryCallback, this);
-        // topic echo 명령으로 제어기에 전달
-        m_sub_joint_position = private_nh_.subscribe("dsr_joint_position_controller/command", 1, &DRHWInterface::positionCallback, this);
+        // topic echo 명령으로 제어기에 전달    disabled to make way for proper roscontrol write() method
+        //m_sub_joint_position = private_nh_.subscribe("dsr_joint_position_controller/command", 1, &DRHWInterface::positionCallback, this);
         
         ros::NodeHandle nh_temp;
-        m_SubSerialRead = nh_temp.subscribe("serial_read", 100, &Serial_comm::read_callback, &ser_comm);
-        m_PubSerialWrite = nh_temp.advertise<std_msgs::String>("serial_write", 100);
+        m_SubSerialRead = nh_temp.subscribe("serial_read", 1, &Serial_comm::read_callback, &ser_comm);
+        m_PubSerialWrite = nh_temp.advertise<std_msgs::String>("serial_write", 1);
 
         // subscribe : Multi-JOG topic msg
-        m_sub_jog_multi_axis = private_nh_.subscribe("jog_multi", 10, &DRHWInterface::jogCallback, this);
-        m_sub_alter_motion_stream = private_nh_.subscribe("alter_motion_stream", 20, &DRHWInterface::alterCallback, this);
-        m_sub_servoj_stream = private_nh_.subscribe("servoj_stream", 20, &DRHWInterface::servojCallback, this);
-        m_sub_servol_stream = private_nh_.subscribe("servol_stream", 20, &DRHWInterface::servolCallback, this);
-        m_sub_speedj_stream = private_nh_.subscribe("speedj_stream", 20, &DRHWInterface::speedjCallback, this);
-        m_sub_speedl_stream = private_nh_.subscribe("speedl_stream", 20, &DRHWInterface::speedlCallback, this);
+        m_sub_jog_multi_axis = private_nh_.subscribe("jog_multi", 1, &DRHWInterface::jogCallback, this);
+        m_sub_alter_motion_stream = private_nh_.subscribe("alter_motion_stream", 1, &DRHWInterface::alterCallback, this);
+        m_sub_servoj_stream = private_nh_.subscribe("servoj_stream", 1, &DRHWInterface::servojCallback, this);
+        m_sub_servol_stream = private_nh_.subscribe("servol_stream", 1, &DRHWInterface::servolCallback, this);
+        m_sub_speedj_stream = private_nh_.subscribe("speedj_stream", 1, &DRHWInterface::speedjCallback, this);
+        m_sub_speedl_stream = private_nh_.subscribe("speedl_stream", 1, &DRHWInterface::speedlCallback, this);
 
-        m_sub_servoj_rt_stream = private_nh_.subscribe("servoj_rt_stream", 20, &DRHWInterface::servojRTCallback, this);
-        m_sub_servol_rt_stream = private_nh_.subscribe("servol_rt_stream", 20, &DRHWInterface::servolRTCallback, this);
-        m_sub_speedj_rt_stream = private_nh_.subscribe("speedj_rt_stream", 20, &DRHWInterface::speedjRTCallback, this);
-        m_sub_speedl_rt_stream = private_nh_.subscribe("speedl_rt_stream", 20, &DRHWInterface::speedlRTCallback, this);
-        m_sub_torque_rt_stream = private_nh_.subscribe("torque_rt_stream", 20, &DRHWInterface::torqueRTCallback, this);
+        m_sub_servoj_rt_stream = private_nh_.subscribe("servoj_rt_stream", 1, &DRHWInterface::servojRTCallback, this);
+        m_sub_servol_rt_stream = private_nh_.subscribe("servol_rt_stream", 1, &DRHWInterface::servolRTCallback, this);
+        m_sub_speedj_rt_stream = private_nh_.subscribe("speedj_rt_stream", 1, &DRHWInterface::speedjRTCallback, this);
+        m_sub_speedl_rt_stream = private_nh_.subscribe("speedl_rt_stream", 1, &DRHWInterface::speedlRTCallback, this);
+        m_sub_torque_rt_stream = private_nh_.subscribe("torque_rt_stream", 1, &DRHWInterface::torqueRTCallback, this);
 
         // system Operations
         m_nh_system[0] = private_nh_.advertiseService("system/set_robot_mode", &DRHWInterface::set_robot_mode_cb, this);
@@ -914,6 +921,7 @@ namespace dsr_control{
         memset(&m_stDrError, 0x00, sizeof(DR_ERROR));
 
         // create threads     
+        DHI_ok_=true;
         m_th_subscribe = boost::thread( boost::bind(&thread_subscribe, private_nh_) );
         m_th_publisher = boost::thread( boost::bind(&thread_publisher, this, private_nh_, DSR_CTL_PUB_RATE/*hz*/) );    //100hz(10ms)
 
@@ -923,22 +931,22 @@ namespace dsr_control{
     }
     DRHWInterface::~DRHWInterface()
     {
+        DHI_ok_=false;
         //ROS_INFO("DRHWInterface::~DRHWInterface() 0");
         Drfl.close_connection();
 
         //ROS_INFO("DRHWInterface::~DRHWInterface() 1");
-        m_th_publisher.join();   //kill publisher thread
+        m_th_publisher.join();   //kill publisher thread    //TODO: i dont think that's how that works.
         //ROS_INFO("DRHWInterface::~DRHWInterface() 2");
 
-        m_th_subscribe.join();   //kill subscribe thread 
+        m_th_subscribe.join();   //kill subscribe thread    //TODO: i dont think that's how that works.
         ROS_INFO("DRHWInterface::~DRHWInterface()");
     }
 
     bool DRHWInterface::init()
     {
-        ROS_INFO("[dsr_hw_interface] init() ==> setup callback fucntion");
+        ROS_INFO("[dsr_hw_interface] init()");
         int nServerPort = 12345;
-        ROS_INFO("INIT@@@@@@@@@@@@@@@@@@@@@@@@@");
         //--- doosan API's call-back fuctions : Only work within 50msec in call-back functions
         Drfl.set_on_tp_initializing_completed(OnTpInitializingCompletedCB);
         Drfl.set_on_homming_completed(OnHommingCompletedCB);
@@ -965,14 +973,24 @@ namespace dsr_control{
 
         //for test host = "127.0.0.1";
 
-        ROS_INFO("host %s, port=%d bCommand: %d, mode: %s\n", host.c_str(), nServerPort, bCommand_, mode.c_str());
+        ROS_INFO("[dsr_hw_interface] host %s, port=%d bCommand: %d, mode: %s, Trying to connect...", host.c_str(), nServerPort, bCommand_, mode.c_str());
 
 
-        if(Drfl.open_connection(host, nServerPort))
+        //open a conventional connection AND a realtime connection, so we get some niceties and the realtime control.
+        
+        //if(Drfl.open_connection(host, nServerPort)&&Drfl.connect_rt_control(host)) 
+        if(Drfl.open_connection(host, nServerPort)) //rt connect later if not emulated. //TODO fix when emulator works with rt.
         {
+            ROS_INFO("[dsr_hw_interface] Conventional control connected successfully!"); 
             //--- connect Emulator ? ------------------------------    
             if(host == "127.0.0.1") m_bIsEmulatorMode = true; 
             else                    m_bIsEmulatorMode = false;
+
+            if(!m_bIsEmulatorMode) 
+            {
+                Drfl.connect_rt_control(host);
+                ROS_INFO("[dsr_hw_interface] REALTIME control connected successfully!"); 
+            }
 
             //--- Get version -------------------------------------            
             SYSTEM_VERSION tSysVerion = {'\0', };
@@ -1010,85 +1028,156 @@ namespace dsr_control{
 
             //--- Set Robot mode : MANUAL or AUTO
             //assert(Drfl.SetRobotMode(ROBOT_MODE_MANUAL));
-            assert(Drfl.set_robot_mode(ROBOT_MODE_AUTONOMOUS));
+            assert(Drfl.set_robot_mode(ROBOT_MODE_AUTONOMOUS)); //normal speed mode ros manual pp304
 
             //--- Set Robot mode : virual or real 
             ROBOT_SYSTEM eTargetSystem = ROBOT_SYSTEM_VIRTUAL;
             if(mode == "real") eTargetSystem = ROBOT_SYSTEM_REAL;
             assert(Drfl.set_robot_system(eTargetSystem));
 
-            // to compare with joints[].cmd
-            for(int i = 0; i < NUM_JOINT; i++){
-                ROS_INFO("[init]::read %d-pos: %7.3f", i, joints[i].cmd);
-                cmd_[i] = joints[i].cmd;
+            // to compare with joints[].cmd - BS I dont understand this yet.
+            // for(int i = 0; i < NUM_JOINT; i++){
+            //     ROS_INFO("[init]::read %d-pos: %7.3f", i, joints[i].cmd);
+            //     cmd_[i] = joints[i].cmd;
+            // }
+
+            //--------- Bring up the realtime interface --------------
+            // if(!private_nh_.getParam("dsr_joint_publisher/publish_rate", rate_))
+            if(!private_nh_.getParam("rate", rate_)){
+                ROS_FATAL("no rate defined, terminating.");
+                return false;
             }
-            return true;
-         }
+            Drfl.set_rt_control_output("v1.0", 1/rate_, drops_);    //Drops isnt used yet.
+
+            ROS_INFO("[INIT] RT UDP interface connected and initialized to a rate of %fHz and %d drops.", rate_, drops_);
+
+            return(true);
+        }
         return false;
     }
 
+    //A hacked down version, since we're not bringing in all my secrets yet.
+    bool DRHWInterface::prepareSwitch(const std::list<hardware_interface::ControllerInfo> &start_list,
+        const std::list<hardware_interface::ControllerInfo> &stop_list)
+    {
+
+        //find the hardware interface type
+        for(auto controller:start_list)
+        {
+            if(controller.type != "joint_state_controller/JointStateController")    //jsc alwways starts, doesnt mandate a hw interface
+            {
+                if(controller.claimed_resources.size()>1)
+                {
+                    ROS_ERROR("only one control resource allowed");
+                    return(false);
+                }
+                auto resource=controller.claimed_resources[0];
+                if(resource.hardware_interface =="hardware_interface::PositionJointInterface"){
+                    ROS_ERROR("[INTERFACE] [prepareSwitch] [START] POSITION INTERFACE REQUESTED, but it is not available due to servoj_rt implementation issues.");
+                    //cmd_mode_=MD_POSITION;
+                    cmd_mode_=MD_NONE;
+                    return(false);                    
+                } 
+                else if(resource.hardware_interface =="hardware_interface::VelocityJointInterface"){
+                    ROS_INFO("[INTERFACE] [prepareSwitch] [START] VELOCITY INTERFACE REQUESTED");
+                    cmd_mode_=MD_VELOCITY;
+                }else
+                {
+                    ROS_ERROR("[INTERFACE] [prepareSwitch] [START] hw interface not correct.");
+                    cmd_mode_=MD_NONE;
+                    return(false);
+                }
+            }
+        }
+
+        auto controller=start_list.begin();
+
+        //start the realtime interface on the doosan side, if prepareswitch-doswitch-read/write isnt fast enough this could fail on the doosan side.
+        ROS_INFO("[INTERFACE] [prepareSwitch]: ACTIVATING DOOSAN REALTIME CONTROL");
+        bool retval=Drfl.start_rt_control();
+
+        //seems like driver starts up in cautious mode, this kicks it up a notch
+        Drfl.set_safety_mode(SAFETY_MODE_AUTONOMOUS, SAFETY_MODE_EVENT_MOVE);   //BAM!
+
+        //set accel and vel limits for joints
+        float acclimits[6]={200, 200, 200, 200, 200, 200};  //acc limits in degrees, i guessed because i cannot find any docs.
+        Drfl.set_accj_rt(acclimits);
+        float vellimits[6]={100, 80, 100, 180, 180, 180};   //straight from my h2515.. well its not exactly mine but you know, we're still close.
+        Drfl.set_velj_rt(vellimits);
+
+        return(retval);
+    }
+
+    void DRHWInterface::doSwitch(const std::list<hardware_interface::ControllerInfo> &start_list,
+                            const std::list<hardware_interface::ControllerInfo> &stop_list){
+        ROS_INFO("[INTERFACE] [doSwitch]: Switching Controllers . . . ");
+        
+
+    }
+        
+
+
     void DRHWInterface::read(ros::Duration& elapsed_time)
     {
-        std_msgs::Float64MultiArray msg;
-        // joints.pos, vel, eff should be update
-        //ROS_DEBUG("DRHWInterface::read()");
-        LPROBOT_POSE pose = Drfl.GetCurrentPose();
-        for(int i = 0; i < NUM_JOINT; i++){
-            ROS_DEBUG("[DRHWInterface::read] %d-pos: %7.3f", i, pose->_fPosition[i]);
-            joints[i].pos = deg2rad(pose->_fPosition[i]);	//update pos to Rviz - i think they mean /joint_states, and this is rad already.
-            msg.data.push_back(joints[i].pos);
+        // std_msgs::Float64MultiArray msg;
+        recv_data_ = Drfl.read_data_rt();    //unclear if this is buffered in the driver, or a nonblocking receive call.
+        
+        for(int i=0; i<NUM_JOINT; i++)
+        {
+            //Read uses realtime feedback message
+            joints[i].pos=deg2rad(recv_data_->actual_joint_position_abs[i]);
+            joints[i].vel=deg2rad(recv_data_->actual_joint_velocity[i]);
+            joints[i].eff=recv_data_->actual_joint_torque[i];
+            
+            //msg.data.push_back(joints[i].pos);    //for the gazebo "simulator"
         }
-        if(m_strRobotGripper != "none"){
-            msg.data.push_back(joints[6].pos);
-        }
-        m_PubtoGazebo.publish(msg);
+        //if(m_strRobotGripper != "none"){
+        //  msg.data.push_back(joints[6].pos);
+        
+        //m_PubtoGazebo.publish(msg);
     }
     
     void DRHWInterface::write(ros::Duration& elapsed_time)
     {
         //ROS_INFO("DRHWInterface::write()");
-        static int count = 0;
-        // joints.cmd is updated
-        std::array<float, NUM_JOINT> tmp;
-        for(int i = 0; i < NUM_JOINT; i++){
-            ROS_DEBUG("[write]::write %d-pos: %7.3f %d-vel: %7.3f %d-cmd: %7.3f",
-            i,
-            joints[i].pos,
-            i,
-            joints[i].vel,
-            i,
-            joints[i].cmd);
-            tmp[i] = joints[i].cmd;
+        for(int i = 0; i < NUM_JOINT; i++) 
+        {
+            //ROS_DEBUG("[write]::write %d-pos: %7.3f %d-vel: %7.3f %d-cmd: %7.3f",i,joints[i].pos,i,joints[i].vel,i,joints[i].cmd);
+            cmdbuf_[i]=rad2deg(joints[i].cmd);
         }
-        if( !bCommand_ ) return;
-        /*int state = Drfl.GetRobotState();
-        if( state == STATE_STANDBY ){
-            for(int i = 0; i < NUM_JOINT; i++){
-                if( fabs(cmd_[i] - joints[i].cmd) > 0.0174532925 ){
-                    Drfl.MoveJAsync(tmp.data(), 50, 50);
-                    ROS_INFO_STREAM("[write] current state: " << GetRobotStateString(state));
-                    std::copy(tmp.cbegin(), tmp.cend(), cmd_.begin());
-                    break;
-                }
-            }
-        }*/
+        
+        if(cmd_mode_==MD_POSITION)
+        {
+            //values that are magic_cookied are interpolated by the controller, and nonzero time < .001 means right away.
+            //Drfl.servoj_rt(cmdbuf_, six_magic_cookies_, six_magic_cookies_, 0.0);
+            ROS_ERROR_THROTTLE(5, "[DSR HW INTERFACE][WRITE] Position mode not supported due to issues with servoj_rt implementation. Use Velocity interface");
+        }
+        else if(cmd_mode_==MD_VELOCITY)
+        {
+            Drfl.speedj_rt(cmdbuf_, six_magic_cookies_, 0.0001);    //API docs state that time values <1ms are directly forwarded.
+        }
+
+
     }
 
     //----- SIG Handler --------------------------------------------------------------
     void DRHWInterface::sigint_handler(int signo)
     {
-        ROS_INFO("SIG HANDLER !!!!!!!!!");
+        ROS_INFO("[DSR HW INTERFACE] SIG HANDLER !!!!!!!!!");
 
-        ros::NodeHandlePtr node = boost::make_shared<ros::NodeHandle>();
-        ros::Publisher pubRobotStop = node->advertise<dsr_msgs::RobotStop>("/"+m_strRobotName +m_strRobotModel+"/stop",100);
+        // ros::NodeHandlePtr node = boost::make_shared<ros::NodeHandle>();
+        // ros::Publisher pubRobotStop = node->advertise<dsr_msgs::RobotStop>("/"+m_strRobotName +m_strRobotModel+"/stop",1);
         
-        dsr_msgs::RobotStop msg;
+        // dsr_msgs::RobotStop msg;
         
-        msg.stop_mode  = STOP_TYPE_QUICK;
-        pubRobotStop.publish(msg);
+        // msg.stop_mode  = STOP_TYPE_QUICK;
+        // pubRobotStop.publish(msg);
 
-        ROS_INFO("[sigint_hangler] CloseConnection");
+        // ROS_INFO("[sigint_hangler] CloseConnection");
+        Drfl.stop(STOP_TYPE_QUICK);
+        DHI_ok_=false;
     }
+
     void DRHWInterface::positionCallback(const std_msgs::Float64MultiArray::ConstPtr& msg){
         ROS_INFO("callback: Position received");
         std::array<float, NUM_JOINT> target_pos;
@@ -1132,7 +1221,7 @@ namespace dsr_control{
         std::copy(msg->vel.cbegin(), msg->vel.cend(), target_vel.begin());
         std::array<float, NUM_JOINT> target_acc;
         std::copy(msg->acc.cbegin(), msg->acc.cend(), target_acc.begin());
-        int time = msg->time;
+        float time = msg->time;
 
         Drfl.servoj(target_pos.data(), target_vel.data(), target_acc.data(), time);
     }
@@ -1145,7 +1234,7 @@ namespace dsr_control{
         std::copy(msg->vel.cbegin(), msg->vel.cend(), target_vel.begin());
         std::array<float, 2> target_acc;
         std::copy(msg->acc.cbegin(), msg->acc.cend(), target_acc.begin());
-        int time = msg->time;
+        float time = msg->time;
 
         Drfl.servol(target_pos.data(), target_vel.data(), target_acc.data(), time);
     }
@@ -1156,7 +1245,7 @@ namespace dsr_control{
         std::copy(msg->vel.cbegin(), msg->vel.cend(), target_vel.begin());
         std::array<float, NUM_JOINT> target_acc;
         std::copy(msg->acc.cbegin(), msg->acc.cend(), target_acc.begin());
-        int time = msg->time;
+        float time = msg->time;
 
         Drfl.speedj(target_vel.data(), target_acc.data(), time);
     }
@@ -1167,7 +1256,7 @@ namespace dsr_control{
         std::copy(msg->vel.cbegin(), msg->vel.cend(), target_vel.begin());
         std::array<float, 2> target_acc;
         std::copy(msg->acc.cbegin(), msg->acc.cend(), target_acc.begin());
-        int time = msg->time;
+        float time = msg->time;
 
         Drfl.speedl(target_vel.data(), target_acc.data(), time);
     }
@@ -1180,7 +1269,7 @@ namespace dsr_control{
         std::copy(msg->vel.cbegin(), msg->vel.cend(), target_vel.begin());
         std::array<float, NUM_JOINT> target_acc;
         std::copy(msg->acc.cbegin(), msg->acc.cend(), target_acc.begin());
-        int time = msg->time;
+        float time = msg->time;
 
         Drfl.servoj_rt(target_pos.data(), target_vel.data(), target_acc.data(), time);
     }
@@ -1193,7 +1282,7 @@ namespace dsr_control{
         std::copy(msg->vel.cbegin(), msg->vel.cend(), target_vel.begin());
         std::array<float, NUM_TASK> target_acc;
         std::copy(msg->acc.cbegin(), msg->acc.cend(), target_acc.begin());
-        int time = msg->time;
+        float time = msg->time;
 
         Drfl.servol_rt(target_pos.data(), target_vel.data(), target_acc.data(), time);
     }
@@ -1204,7 +1293,7 @@ namespace dsr_control{
         std::copy(msg->vel.cbegin(), msg->vel.cend(), target_vel.begin());
         std::array<float, NUM_JOINT> target_acc;
         std::copy(msg->acc.cbegin(), msg->acc.cend(), target_acc.begin());
-        int time = msg->time;
+        float time = msg->time;
 
         Drfl.speedj_rt(target_vel.data(), target_acc.data(), time);
     }
@@ -1215,7 +1304,7 @@ namespace dsr_control{
         std::copy(msg->vel.cbegin(), msg->vel.cend(), target_vel.begin());
         std::array<float, NUM_TASK> target_acc;
         std::copy(msg->acc.cbegin(), msg->acc.cend(), target_acc.begin());
-        int time = msg->time;
+        float time = msg->time;
 
         Drfl.speedl_rt(target_vel.data(), target_acc.data(), time);
     }
@@ -1224,7 +1313,7 @@ namespace dsr_control{
         
         std::array<float, NUM_TASK> tor;
         std::copy(msg->tor.cbegin(), msg->tor.cend(), tor.begin());
-        int time = msg->time;
+        float time = msg->time;
 
         Drfl.torque_rt(tor.data(), time);
     }
